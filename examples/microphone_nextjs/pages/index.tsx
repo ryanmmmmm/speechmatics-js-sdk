@@ -36,6 +36,8 @@ export default function Main({ jwt }: MainProps) {
   const [bufferedText, setBufferedText] = useState<string>('');
   const [timeoutId, setTimeoutId] = useState<NodeJS.Timeout | null>(null);
   const [intervalId, setIntervalId] = useState<NodeJS.Timeout | null>(null);
+  const [apiQueue, setApiQueue] = useState<string[]>([]);
+  const [isProcessingQueue, setIsProcessingQueue] = useState<boolean>(false);
 
   const rtSessionRef = useRef<RealtimeSession>(new RealtimeSession(jwt));
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -90,8 +92,11 @@ export default function Main({ jwt }: MainProps) {
     }
   };
 
-  const handleStreamAudio = async (text: string) => {
-    console.log('handleStreamAudio called with text:', text);
+  const processQueue = async () => {
+    if (isProcessingQueue || apiQueue.length === 0) return;
+
+    setIsProcessingQueue(true);
+    const text = apiQueue[0];
 
     try {
       console.log('Making API call with text:', text);
@@ -126,12 +131,20 @@ export default function Main({ jwt }: MainProps) {
     }
 
     setProcessedText(text); // Update the processed text state
+    setApiQueue((prevQueue) => prevQueue.slice(1)); // Remove the processed item from the queue
+    setIsProcessingQueue(false);
   };
+
+  useEffect(() => {
+    if (!isProcessingQueue && apiQueue.length > 0) {
+      processQueue();
+    }
+  }, [apiQueue, isProcessingQueue]);
 
   const flushBufferedText = () => {
     if (bufferedText.trim()) {
-      handleStreamAudio(bufferedText);
-      setBufferedText('');
+      setApiQueue((prevQueue) => [...prevQueue, bufferedText]);
+      setBufferedText(''); // Clear the buffer after sending
     }
   };
 
@@ -139,7 +152,7 @@ export default function Main({ jwt }: MainProps) {
     setTranscription((prev) => [...prev, ...res.results]);
     setPartial('');
     const newText = res.results.map(r => r.alternatives[0].content).join(' ');
-    setBufferedText(prev => prev + ' ' + newText);
+    setBufferedText(prev => prev + ' ' + newText.trim());
 
     // Clear any existing timeout
     if (timeoutId) {
@@ -181,7 +194,7 @@ export default function Main({ jwt }: MainProps) {
     rtSession.addListener('AddPartialTranslation', handleAddPartialTranslation);
 
     // Set up an interval to periodically flush the buffer
-    const intervalId = setInterval(flushBufferedText, 5000);
+    const intervalId = setInterval(flushBufferedText, 1000);
     setIntervalId(intervalId);
 
     return () => {
