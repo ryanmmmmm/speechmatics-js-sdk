@@ -26,14 +26,20 @@ type MainProps = { jwt?: string };
 type SessionState = 'configure' | 'starting' | 'blocked' | 'error' | 'running';
 
 export default function Main({ jwt }: MainProps) {
-  const [transcription, setTranscription] = useState<
-    RealtimeRecognitionResult[]
-  >([]);
+  const [transcription, setTranscription] = useState<RealtimeRecognitionResult[]>([]);
   const [partial, setPartial] = useState<string>('');
+  const [spanishTranscription, setSpanishTranscription] = useState<RealtimeRecognitionResult[]>([]);
+  const [spanishPartial, setSpanishPartial] = useState<string>('');
   const [audioDeviceIdState, setAudioDeviceId] = useState<string>('');
   const [sessionState, setSessionState] = useState<SessionState>('configure');
+  const [bearerToken, setBearerToken] = useState<string>('');
+  const [bufferedText, setBufferedText] = useState<string>('');
+  const [timeoutId, setTimeoutId] = useState<NodeJS.Timeout | null>(null);
+  const [intervalId, setIntervalId] = useState<NodeJS.Timeout | null>(null);
 
   const rtSessionRef = useRef<RealtimeSession>(new RealtimeSession(jwt));
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [processedText, setProcessedText] = useState<string>('');
 
   // Get devices using our custom hook
   const devices = useAudioDevices();
@@ -59,19 +65,148 @@ export default function Main({ jwt }: MainProps) {
   // Memoise AudioRecorder so it doesn't get recreated on re-render
   const audioRecorder = useMemo(() => new AudioRecorder(sendAudio), []);
 
-  // Attach our event listeners to the realtime session
-  rtSessionRef.current.addListener('AddTranscript', (res) => {
-    setTranscription([...transcription, ...res.results]);
-    setPartial('');
-  });
+  const authenticate = async () => {
+    try {
+      const response = await fetch('http://localhost/v1/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: 'ryan+credits@speechlab.ai',
+          password: '1374Pre96',
+        }),
+      });
 
-  rtSessionRef.current.addListener('AddPartialTranscript',(res) => {
+      if (!response.ok) {
+        throw new Error('Authentication failed');
+      }
+
+      const data = await response.json();
+      setBearerToken(data.tokens.accessToken.jwtToken);
+      console.log('Authenticated successfully, bearer token set.');
+    } catch (error) {
+      console.error('Error during authentication:', error);
+    }
+  };
+
+  const handleStreamAudio = async (text: string) => {
+    console.log('handleStreamAudio called with text:', text);
+    const sentences = text.match(/[^.!?]+[.!?]+/g) || [];
+    let combinedText = '';
+
+    for (let i = 0; i < sentences.length; i++) {
+      const sentence = sentences[i];
+      combinedText += sentence;
+
+      try {
+        console.log('Making API call with sentence:', sentence);
+        const response = await fetch('http://localhost/v1/texttospeeches/generateAndrew', {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/json, text/plain, */*',
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${bearerToken}`,
+          },
+          body: JSON.stringify({ text: sentence }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Network response was not ok');
+        }
+
+        const audioData = await response.arrayBuffer();
+        console.log('Received audio data for sentence:', sentence);
+
+        // Create a Blob from the audio data
+        const blob = new Blob([audioData], { type: 'audio/wav' });
+        const url = URL.createObjectURL(blob);
+
+        // Set the Blob URL as the source for the audio element and play
+        if (audioRef.current) {
+          audioRef.current.src = url;
+          await audioRef.current.play().catch(err => console.error('Error playing audio:', err));
+        }
+      } catch (error) {
+        console.error('Error processing sentence:', sentence, error);
+      }
+    }
+
+    setProcessedText(combinedText); // Update the processed text state
+  };
+
+  const flushBufferedText = () => {
+    if (bufferedText.trim()) {
+      handleStreamAudio(bufferedText);
+      setBufferedText('');
+    }
+  };
+
+  const handleAddTranscript = (res) => {
+    setTranscription((prev) => [...prev, ...res.results]);
+    setPartial('');
+    const newText = res.results.map(r => r.alternatives[0].content).join(' ');
+    setBufferedText(prev => {
+      const updatedText = prev + ' ' + newText;
+      const sentences = updatedText.match(/[^.!?]+[.!?]+/g) || [];
+      if (sentences.length > 0) {
+        handleStreamAudio(sentences.join(' '));
+        return updatedText.replace(sentences.join(' '), '').trim();
+      }
+      return updatedText;
+    });
+
+    // Clear any existing timeout
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+
+    // Set a new timeout to flush the buffer after 5 seconds of inactivity
+    const newTimeoutId = setTimeout(flushBufferedText, 5000);
+    setTimeoutId(newTimeoutId);
+  };
+
+  const handleAddPartialTranscript = (res) => {
     let temp = "";
     if (transcription.length) {
       temp += " ";
     }
     setPartial(`${temp}${res.metadata.transcript}`);
-  });
+  };
+
+  const handleAddTranslation = (res) => {
+    setSpanishTranscription((prev) => [...prev, ...res.results]);
+  };
+
+  const handleAddPartialTranslation = (res) => {
+    let tempSpanish = "";
+    if (spanishTranscription.length) {
+      tempSpanish += " ";
+    }
+    setSpanishPartial(`${tempSpanish}${res.results.map(r => r.content).join(' ')}`);
+  };
+
+  // Attach our event listeners to the realtime session
+  useEffect(() => {
+    const rtSession = rtSessionRef.current;
+
+    rtSession.addListener('AddTranscript', handleAddTranscript);
+    rtSession.addListener('AddPartialTranscript', handleAddPartialTranscript);
+    rtSession.addListener('AddTranslation', handleAddTranslation);
+    rtSession.addListener('AddPartialTranslation', handleAddPartialTranslation);
+
+    // Set up an interval to periodically flush the buffer
+    const intervalId = setInterval(flushBufferedText, 5000);
+    setIntervalId(intervalId);
+
+    return () => {
+      rtSession.removeListener('AddTranscript', handleAddTranscript);
+      rtSession.removeListener('AddPartialTranscript', handleAddPartialTranscript);
+      rtSession.removeListener('AddTranslation', handleAddTranslation);
+      rtSession.removeListener('AddPartialTranslation', handleAddPartialTranslation);
+      clearInterval(intervalId);
+    };
+  }, [transcription, spanishTranscription, bearerToken]);
 
   // start audio recording once the websocket is connected
   rtSessionRef.current.addListener('RecognitionStarted', async () => {
@@ -94,6 +229,7 @@ export default function Main({ jwt }: MainProps) {
     try {
       await audioRecorder.startRecording(audioDeviceIdComputed);
       setTranscription([]);
+      setSpanishTranscription([]);
     } catch (err) {
       setSessionState('blocked');
       return;
@@ -103,8 +239,11 @@ export default function Main({ jwt }: MainProps) {
         transcription_config: { 
           max_delay: 2, 
           language: 'en', 
-          operating_point:"enhanced",
-          enable_partials: true
+          operating_point: "enhanced",
+          enable_partials: true,
+        },
+        translation_config: {
+          target_languages: ['es']
         },
         audio_format: {
           type: 'file',
@@ -120,6 +259,19 @@ export default function Main({ jwt }: MainProps) {
     await audioRecorder.stopRecording();
     await rtSessionRef.current.stop();
   };
+
+  useEffect(() => {
+    authenticate();
+  }, []);
+
+  // Set up interval to periodically flush the buffer
+  useEffect(() => {
+    const intervalId = setInterval(flushBufferedText, 5000);
+    setIntervalId(intervalId);
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, []);
 
   return (
     <div>
@@ -158,15 +310,31 @@ export default function Main({ jwt }: MainProps) {
       {['starting', 'running', 'configure', 'blocked'].includes(
         sessionState,
       ) && <p>State: {sessionState}</p>}
-      <p>
-        {transcription.map(
-          (item, index) =>
-            (index && !['.', ','].includes(item?.alternatives?.[0]?.content)
-              ? ' '
-              : '') + item?.alternatives?.[0]?.content,
-        )}
-        <em>{partial}</em>
-      </p>
+      <div className="transcription-section">
+        <h3>Transcription</h3>
+        <p>
+          {transcription.map(
+            (item, index) =>
+              (index && !['.', ','].includes(item?.alternatives?.[0]?.content)
+                ? ' '
+                : '') + item?.alternatives?.[0]?.content,
+          )}
+          <em>{partial}</em>
+        </p>
+      </div>
+      <div className="translation-section">
+        <h3>Spanish Translation</h3>
+        <p>
+          {spanishTranscription.map(
+            (item, index) =>
+              (index && !['.', ','].includes(item?.content)
+                ? ' '
+                : '') + item?.content,
+          )}
+          <em>{spanishPartial}</em>
+        </p>
+      </div>
+      <audio ref={audioRef} />
     </div>
   );
 }
