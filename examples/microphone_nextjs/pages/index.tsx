@@ -92,47 +92,40 @@ export default function Main({ jwt }: MainProps) {
 
   const handleStreamAudio = async (text: string) => {
     console.log('handleStreamAudio called with text:', text);
-    const sentences = text.match(/[^.!?]+[.!?]+/g) || [];
-    let combinedText = '';
 
-    for (let i = 0; i < sentences.length; i++) {
-      const sentence = sentences[i];
-      combinedText += sentence;
+    try {
+      console.log('Making API call with text:', text);
+      const response = await fetch('http://localhost/v1/texttospeeches/generateAndrew', {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json, text/plain, */*',
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${bearerToken}`,
+        },
+        body: JSON.stringify({ text }),
+      });
 
-      try {
-        console.log('Making API call with sentence:', sentence);
-        const response = await fetch('http://localhost/v1/texttospeeches/generateAndrew', {
-          method: 'POST',
-          headers: {
-            'Accept': 'application/json, text/plain, */*',
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${bearerToken}`,
-          },
-          body: JSON.stringify({ text: sentence }),
-        });
-
-        if (!response.ok) {
-          throw new Error('Network response was not ok');
-        }
-
-        const audioData = await response.arrayBuffer();
-        console.log('Received audio data for sentence:', sentence);
-
-        // Create a Blob from the audio data
-        const blob = new Blob([audioData], { type: 'audio/wav' });
-        const url = URL.createObjectURL(blob);
-
-        // Set the Blob URL as the source for the audio element and play
-        if (audioRef.current) {
-          audioRef.current.src = url;
-          await audioRef.current.play().catch(err => console.error('Error playing audio:', err));
-        }
-      } catch (error) {
-        console.error('Error processing sentence:', sentence, error);
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
       }
+
+      const audioData = await response.arrayBuffer();
+      console.log('Received audio data for text:', text);
+
+      // Create a Blob from the audio data
+      const blob = new Blob([audioData], { type: 'audio/wav' });
+      const url = URL.createObjectURL(blob);
+
+      // Set the Blob URL as the source for the audio element and play
+      if (audioRef.current) {
+        audioRef.current.src = url;
+        await audioRef.current.play().catch(err => console.error('Error playing audio:', err));
+      }
+    } catch (error) {
+      console.error('Error processing text:', text, error);
     }
 
-    setProcessedText(combinedText); // Update the processed text state
+    setProcessedText(text); // Update the processed text state
   };
 
   const flushBufferedText = () => {
@@ -146,15 +139,7 @@ export default function Main({ jwt }: MainProps) {
     setTranscription((prev) => [...prev, ...res.results]);
     setPartial('');
     const newText = res.results.map(r => r.alternatives[0].content).join(' ');
-    setBufferedText(prev => {
-      const updatedText = prev + ' ' + newText;
-      const sentences = updatedText.match(/[^.!?]+[.!?]+/g) || [];
-      if (sentences.length > 0) {
-        handleStreamAudio(sentences.join(' '));
-        return updatedText.replace(sentences.join(' '), '').trim();
-      }
-      return updatedText;
-    });
+    setBufferedText(prev => prev + ' ' + newText);
 
     // Clear any existing timeout
     if (timeoutId) {
@@ -162,7 +147,7 @@ export default function Main({ jwt }: MainProps) {
     }
 
     // Set a new timeout to flush the buffer after 5 seconds of inactivity
-    const newTimeoutId = setTimeout(flushBufferedText, 5000);
+    const newTimeoutId = setTimeout(flushBufferedText, 1000);
     setTimeoutId(newTimeoutId);
   };
 
