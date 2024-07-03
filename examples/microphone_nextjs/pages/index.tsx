@@ -141,6 +141,13 @@ export default function Main({ jwt }: MainProps) {
     }
   }, [apiQueue, isProcessingQueue]);
 
+  const flushBufferedText = () => {
+    if (bufferedText.trim()) {
+      setApiQueue((prevQueue) => [...prevQueue, bufferedText.trim()]);
+      setBufferedText(''); // Clear the buffer after sending
+    }
+  };
+
   const handleAddTranscript = (res) => {
     setTranscription((prev) => [...prev, ...res.results]);
     setPartial('');
@@ -148,11 +155,23 @@ export default function Main({ jwt }: MainProps) {
     const updatedBufferedText = bufferedText + ' ' + newText.trim();
     setBufferedText(updatedBufferedText);
 
-    // Check if buffered text has 10 or more words
-    if (updatedBufferedText.split(' ').length >= 10) {
-      setApiQueue((prevQueue) => [...prevQueue, updatedBufferedText]);
+    // Check if buffered text has 10 or more words and is not all whitespace
+    if (updatedBufferedText.split(' ').filter(word => word.trim().length > 0).length >= 10) {
+      setApiQueue((prevQueue) => [...prevQueue, updatedBufferedText.trim()]);
       setBufferedText(''); // Clear the buffer after adding to the queue
     }
+
+    // Clear any existing timeout
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+
+    // Set a new timeout to flush the buffer after 1 second of inactivity
+    const newTimeoutId = setTimeout(() => {
+      flushBufferedText();
+      setTimeoutId(null); // Reset the timeoutId after flushing
+    }, 1000);
+    setTimeoutId(newTimeoutId);
   };
 
   const handleAddPartialTranscript = (res) => {
@@ -189,8 +208,11 @@ export default function Main({ jwt }: MainProps) {
       rtSession.removeListener('AddPartialTranscript', handleAddPartialTranscript);
       rtSession.removeListener('AddTranslation', handleAddTranslation);
       rtSession.removeListener('AddPartialTranslation', handleAddPartialTranslation);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
     };
-  }, [transcription, spanishTranscription, bearerToken]);
+  }, [transcription, spanishTranscription, bearerToken, timeoutId]);
 
   // start audio recording once the websocket is connected
   rtSessionRef.current.addListener('RecognitionStarted', async () => {
