@@ -323,6 +323,11 @@ export default function Main({ jwt }: MainProps) {
     }
   };
 
+  const stopSendingData = async () => {
+    await rtSessionRef.current.stop();
+    setSessionState('configure');
+  };
+
   useEffect(() => {
     authenticate();
   }, []);
@@ -330,7 +335,7 @@ export default function Main({ jwt }: MainProps) {
   return (
     <div>
       <div className='flex-row'>
-        <p>Select Microphone</p>
+        <p>Select and listen to Microphone for proces</p>
         {(sessionState === 'blocked' || denied) && (
           <p className='warning-text'>Microphone permission is blocked</p>
         )}
@@ -359,14 +364,23 @@ export default function Main({ jwt }: MainProps) {
           stopTranscription={stopTranscription}
           startTranscription={startTranscription}
         />
+
+        <br/>
+        Or Choose a Real Time Audio Stream Instead
+        Listen to Original Audio: 
         <audio
           controls
           style={{ marginLeft: '1em' }}
           src="/0b074c26-5262-4fa8-8728-0cb8e2e35712.m4a"
           type="audio/m4a"
           ref={audioRef}
-          onPlay={handleAudioPlay}
         />
+        <button onClick={handleAudioPlay} style={{ marginLeft: '1em' }}>
+          Convert Real-time Audio
+        </button>
+        <button onClick={stopSendingData} style={{ marginLeft: '1em' }}>
+          Stop Sending Data
+        </button>
       </div>
       {sessionState === 'error' && (
         <p className='warning-text'>Session encountered an error</p>
