@@ -334,53 +334,57 @@ export default function Main({ jwt }: MainProps) {
 
   return (
     <div>
-      <div className='flex-row'>
-        <p>Select and listen to Microphone for proces</p>
+
+      <div className="container">
+        <div className="left-box">
+        <div className='flex-row'>
+        <p>Record to Microphone and stream Andree's voice:</p>
         {(sessionState === 'blocked' || denied) && (
           <p className='warning-text'>Microphone permission is blocked</p>
         )}
       </div>
-      <MicSelect
-        disabled={!['configure', 'blocked'].includes(sessionState)}
-        onClick={requestDevices}
-        value={audioDeviceIdComputed}
-        options={devices.map((item) => {
-          return { value: item.deviceId, label: item.label };
-        })}
-        onChange={(e) => {
-          if (sessionState === 'configure') {
-            setAudioDeviceId(e.target.value);
-          } else if (sessionState === 'blocked') {
-            setSessionState('configure');
-            setAudioDeviceId(e.target.value);
-          } else {
-            console.warn('Unexpected mic change during state:', sessionState);
-          }
-        }}
-      />
-      <div style={{ display: 'flex', alignItems: 'center' }}>
-        <TranscriptionButton
-          sessionState={sessionState}
-          stopTranscription={stopTranscription}
-          startTranscription={startTranscription}
-        />
-
-        <br/>
-        Or Choose a Real Time Audio Stream Instead
-        Listen to Original Audio: 
-        <audio
-          controls
-          style={{ marginLeft: '1em' }}
-          src="/0b074c26-5262-4fa8-8728-0cb8e2e35712.m4a"
-          type="audio/m4a"
-          ref={audioRef}
-        />
-        <button onClick={handleAudioPlay} style={{ marginLeft: '1em' }}>
-          Convert Real-time Audio
-        </button>
-        <button onClick={stopSendingData} style={{ marginLeft: '1em' }}>
-          Stop Sending Data
-        </button>
+          <MicSelect
+            disabled={!['configure', 'blocked'].includes(sessionState)}
+            onClick={requestDevices}
+            value={audioDeviceIdComputed}
+            options={devices.map((item) => {
+              return { value: item.deviceId, label: item.label };
+            })}
+            onChange={(e) => {
+              if (sessionState === 'configure') {
+                setAudioDeviceId(e.target.value);
+              } else if (sessionState === 'blocked') {
+                setSessionState('configure');
+                setAudioDeviceId(e.target.value);
+              } else {
+                console.warn('Unexpected mic change during state:', sessionState);
+              }
+            }}
+          />
+          <TranscriptionButton
+            sessionState={sessionState}
+            stopTranscription={stopTranscription}
+            startTranscription={startTranscription}
+          />
+        </div>
+        <div className="right-box">
+          <p>Or Choose a Real Time Audio Stream Instead</p>
+          <p>Listen to Original Audio that will be converted in real-time:</p>
+          <audio
+            controls
+            src="/0b074c26-5262-4fa8-8728-0cb8e2e35712.m4a"
+            type="audio/m4a"
+            ref={audioRef}
+          />
+          <br/>
+          <br/>
+          <button onClick={handleAudioPlay} style={{ marginLeft: '1em' }}>
+            Convert into Real-time audio of Andrew's voice:
+          </button>
+          <button onClick={stopSendingData} style={{ marginLeft: '1em' }}>
+            Stop Sending Data
+          </button>
+        </div>
       </div>
       {sessionState === 'error' && (
         <p className='warning-text'>Session encountered an error</p>
@@ -412,6 +416,39 @@ export default function Main({ jwt }: MainProps) {
           <em>{spanishPartial}</em>
         </p>
       </div>
+      <style jsx>{`
+        .container {
+          display: flex;
+          justify-content: space-between;
+          margin-top: 1em;
+        }
+
+        .left-box, .right-box {
+          flex: 1;
+          padding: 1em;
+          border: 1px solid #ccc;
+          border-radius: 8px;
+          margin-right: 1em;
+        }
+
+        .right-box {
+          margin-right: 0;
+        }
+
+        .flex-row {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+        }
+
+        .warning-text {
+          color: red;
+        }
+
+        .transcription-section, .translation-section {
+          margin-top: 1em;
+        }
+      `}</style>
     </div>
   );
 }
