@@ -34,10 +34,8 @@ export default function Main({ jwt }: MainProps) {
   const [sessionState, setSessionState] = useState<SessionState>('configure');
   const [bearerToken, setBearerToken] = useState<string>('');
   const [bufferedText, setBufferedText] = useState<string>('');
-  const [timeoutId, setTimeoutId] = useState<NodeJS.Timeout | null>(null);
-  const [intervalId, setIntervalId] = useState<NodeJS.Timeout | null>(null);
   const [apiQueue, setApiQueue] = useState<string[]>([]);
-  const [isProcessingQueue, setIsProcessingQueue] = useState<boolean>(false);
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
 
   const rtSessionRef = useRef<RealtimeSession>(new RealtimeSession(jwt));
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -92,10 +90,10 @@ export default function Main({ jwt }: MainProps) {
     }
   };
 
-  const processQueue = async () => {
-    if (isProcessingQueue || apiQueue.length === 0) return;
+  const playAudioQueue = async () => {
+    if (isPlaying || apiQueue.length === 0) return;
 
-    setIsProcessingQueue(true);
+    setIsPlaying(true);
     const text = apiQueue[0];
 
     try {
@@ -132,36 +130,23 @@ export default function Main({ jwt }: MainProps) {
 
     setProcessedText(text); // Update the processed text state
     setApiQueue((prevQueue) => prevQueue.slice(1)); // Remove the processed item from the queue
-    setIsProcessingQueue(false);
+    setIsPlaying(false);
   };
 
   useEffect(() => {
-    if (!isProcessingQueue && apiQueue.length > 0) {
-      processQueue();
+    if (!isPlaying && apiQueue.length > 0) {
+      playAudioQueue();
     }
-  }, [apiQueue, isProcessingQueue]);
-
-  const flushBufferedText = () => {
-    if (bufferedText.trim()) {
-      setApiQueue((prevQueue) => [...prevQueue, bufferedText]);
-      setBufferedText(''); // Clear the buffer after sending
-    }
-  };
+  }, [apiQueue, isPlaying]);
 
   const handleAddTranscript = (res) => {
     setTranscription((prev) => [...prev, ...res.results]);
     setPartial('');
-    const newText = res.results.map(r => r.alternatives[0].content).join(' ');
-    setBufferedText(prev => prev + ' ' + newText.trim());
+    const newText = res.results.map(r => r.alternatives[0].content).join(' ').trim();
 
-    // Clear any existing timeout
-    if (timeoutId) {
-      clearTimeout(timeoutId);
+    if (newText) {
+      setApiQueue((prevQueue) => [...prevQueue, newText]);
     }
-
-    // Set a new timeout to flush the buffer after 5 seconds of inactivity
-    const newTimeoutId = setTimeout(flushBufferedText, 1000);
-    setTimeoutId(newTimeoutId);
   };
 
   const handleAddPartialTranscript = (res) => {
@@ -189,20 +174,13 @@ export default function Main({ jwt }: MainProps) {
     const rtSession = rtSessionRef.current;
 
     rtSession.addListener('AddTranscript', handleAddTranscript);
-    rtSession.addListener('AddPartialTranscript', handleAddPartialTranscript);
     rtSession.addListener('AddTranslation', handleAddTranslation);
     rtSession.addListener('AddPartialTranslation', handleAddPartialTranslation);
 
-    // Set up an interval to periodically flush the buffer
-    const intervalId = setInterval(flushBufferedText, 1000);
-    setIntervalId(intervalId);
-
     return () => {
       rtSession.removeListener('AddTranscript', handleAddTranscript);
-      rtSession.removeListener('AddPartialTranscript', handleAddPartialTranscript);
       rtSession.removeListener('AddTranslation', handleAddTranslation);
       rtSession.removeListener('AddPartialTranslation', handleAddPartialTranslation);
-      clearInterval(intervalId);
     };
   }, [transcription, spanishTranscription, bearerToken]);
 
@@ -258,17 +236,30 @@ export default function Main({ jwt }: MainProps) {
     await rtSessionRef.current.stop();
   };
 
+  const handleAudioPlayback = () => {
+    const audioElement = audioRef.current;
+    if (!audioElement) return;
+
+    audioElement.addEventListener('play', async () => {
+      const stream = audioElement.captureStream();
+      const audioContext = new AudioContext();
+      const source = audioContext.createMediaStreamSource(stream);
+      const processor = audioContext.createScriptProcessor(4096, 1, 1);
+
+      source.connect(processor);
+      processor.connect(audioContext.destination);
+
+      processor.onaudioprocess = (event) => {
+        const inputData = event.inputBuffer.getChannelData(0);
+        const audioBlob = new Blob([inputData], { type: 'audio/wav' });
+        sendAudio(audioBlob);
+      };
+    });
+  };
+
   useEffect(() => {
     authenticate();
-  }, []);
-
-  // Set up interval to periodically flush the buffer
-  useEffect(() => {
-    const intervalId = setInterval(flushBufferedText, 5000);
-    setIntervalId(intervalId);
-    return () => {
-      clearInterval(intervalId);
-    };
+    handleAudioPlayback(); // Ensure the audio playback handler is set up
   }, []);
 
   return (
@@ -302,6 +293,12 @@ export default function Main({ jwt }: MainProps) {
         stopTranscription={stopTranscription}
         startTranscription={startTranscription}
       />
+      <audio
+        ref={audioRef}
+        controls
+        src="/0b074c26-5262-4fa8-8728-0cb8e2e35712.m4a"
+        onCanPlay={handleAudioPlayback} // Set up the playback handler when the audio can play
+      />
       {sessionState === 'error' && (
         <p className='warning-text'>Session encountered an error</p>
       )}
@@ -332,7 +329,6 @@ export default function Main({ jwt }: MainProps) {
           <em>{spanishPartial}</em>
         </p>
       </div>
-      <audio ref={audioRef} />
     </div>
   );
 }
@@ -430,6 +426,24 @@ function SquareIcon(props: React.SVGProps<SVGSVGElement> & CSSProperties) {
       >
         <title>A Square Icon</title>
         <path fill='#fff' d='M0 0h6v6H0z' />
+      </svg>
+    </span>
+  );
+}
+
+function PlayIcon(props: React.SVGProps<SVGSVGElement> & CSSProperties) {
+  return (
+    <span style={{ ...props.style }}>
+      <svg
+        width='1em'
+        height='1em'
+        viewBox='0 0 12 12'
+        fill='none'
+        xmlns='http://www.w3.org/2000/svg'
+        {...props}
+      >
+        <title>A Play Icon</title>
+        <polygon points="0,0 12,6 0,12" fill="#C84031" />
       </svg>
     </span>
   );
