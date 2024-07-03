@@ -267,58 +267,61 @@ export default function Main({ jwt }: MainProps) {
     await rtSessionRef.current.stop();
   };
 
-  
-
-  // New function to handle audio stream from the audio element
-
-
   const handleAudioPlay = async () => {
-    if (audioRef.current) {
-      console.log('Audio play event triggered');
-      const audioStream = audioRef.current.captureStream();
-      console.log('Captured audio stream:', audioStream);
-      await startTranscriptionWithAudioElement(audioStream);
-    } else {
-      console.error('Audio element reference is null');
+    try {
+      const response = await fetch('/0b074c26-5262-4fa8-8728-0cb8e2e35712.m4a');
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+      const audioBlob = await response.blob();
+      await startTranscriptionWithAudioBlob(audioBlob);
+    } catch (error) {
+      console.error('Error fetching audio file:', error);
     }
   };
-  
-  // New function to handle audio stream from the audio element
-  const startTranscriptionWithAudioElement = async (audioStream: MediaStream) => {
-    console.log('Starting transcription with audio element stream');
+
+  const startTranscriptionWithAudioBlob = async (audioBlob: Blob) => {
+    console.log('Starting transcription with audio blob');
     setSessionState('starting');
     try {
-      rtSessionRef.current.sendAudioStream(audioStream);
-      console.log('Audio stream sent to Speechmatics websocket');
-      setTranscription([]);
-      setSpanishTranscription([]);
+      await rtSessionRef.current.start({
+        transcription_config: {
+          language: 'en',
+          operating_point: 'enhanced',
+          enable_partials: true,
+          max_delay: 2,
+        },
+        audio_format: { type: 'file' },
+        translation_config: {
+          target_languages: ['es']
+        },
+      });
+
+      const reader = audioBlob.stream().getReader();
+      const readChunk = async () => {
+        const { done, value } = await reader.read();
+        if (done) {
+          console.log('Audio stream sent to Speechmatics websocket');
+          setTranscription([]);
+          setSpanishTranscription([]);
+          return;
+        }
+        rtSessionRef.current.sendAudio(value);
+        readChunk();
+      };
+      readChunk();
     } catch (err) {
       console.error('Error sending audio stream:', err);
       setSessionState('blocked');
       return;
     }
     try {
-      await rtSessionRef.current.start({
-        transcription_config: { 
-          max_delay: 2, 
-          language: 'en', 
-          operating_point: "enhanced",
-          enable_partials: true,
-        },
-        translation_config: {
-          target_languages: ['es']
-        },
-        audio_format: {
-          type: 'file',
-        },
-      });
       console.log('Speechmatics session started');
     } catch (err) {
       console.error('Error starting Speechmatics session:', err);
       setSessionState('error');
     }
   };
-  
 
   useEffect(() => {
     authenticate();
