@@ -366,17 +366,24 @@ function TranscriptionButton({
       {['configure', 'stopped', 'starting', 'error', 'blocked'].includes(
         sessionState,
       ) && (
-        <button
-          type='button'
-          className='bottom-button start-button'
-          disabled={sessionState === 'starting'}
-          onClick={async () => {
-            startTranscription();
-          }}
-        >
-          <CircleIcon style={{ marginRight: '0.25em', marginTop: '1px' }} />
-          Start Transcribing
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <button
+            type='button'
+            className='bottom-button start-button'
+            disabled={sessionState === 'starting'}
+            onClick={async () => {
+              startTranscription();
+            }}
+          >
+            <CircleIcon style={{ marginRight: '0.25em', marginTop: '1px' }} />
+            Start Transcribing
+          </button>
+          <audio controls style={{ marginLeft: '1em' }}
+           src="/0b074c26-5262-4fa8-8728-0cb8e2e35712.m4a" type="audio/m4a">
+           
+        
+          </audio>
+        </div>
       )}
 
       {sessionState === 'running' && (
