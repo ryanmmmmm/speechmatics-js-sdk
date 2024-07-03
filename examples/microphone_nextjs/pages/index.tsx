@@ -34,10 +34,8 @@ export default function Main({ jwt }: MainProps) {
   const [sessionState, setSessionState] = useState<SessionState>('configure');
   const [bearerToken, setBearerToken] = useState<string>('');
   const [bufferedText, setBufferedText] = useState<string>('');
-  const [apiQueue, setApiQueue] = useState<number[]>([]);
+  const [apiQueue, setApiQueue] = useState<string[]>([]);
   const [isProcessingQueue, setIsProcessingQueue] = useState<boolean>(false);
-  const [preloadedAudio, setPreloadedAudio] = useState<Map<number, string>>(new Map());
-  const [currentIndex, setCurrentIndex] = useState<number>(0);
 
   const rtSessionRef = useRef<RealtimeSession>(new RealtimeSession(jwt));
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -99,13 +97,9 @@ export default function Main({ jwt }: MainProps) {
     const updatedBufferedText = bufferedText + ' ' + newText.trim();
     setBufferedText(updatedBufferedText);
 
-    // Preload the text-to-speech API responses
-    preloadAudio(updatedBufferedText);
-  };
-
-  const preloadAudio = async (text: string) => {
+    // Call the text-to-speech API immediately
     try {
-      console.log('Preloading API call with text:', text);
+      console.log('Making API call with text:', updatedBufferedText);
       const response = await fetch('http://localhost/v1/texttospeeches/generateAndrew', {
         method: 'POST',
         headers: {
@@ -113,7 +107,7 @@ export default function Main({ jwt }: MainProps) {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${bearerToken}`,
         },
-        body: JSON.stringify({ text: text.trim() }),
+        body: JSON.stringify({ text: updatedBufferedText.trim() }),
       });
 
       if (!response.ok) {
@@ -121,29 +115,21 @@ export default function Main({ jwt }: MainProps) {
       }
 
       const audioData = await response.arrayBuffer();
-      console.log('Received audio data for text:', text);
+      console.log('Received audio data for text:', updatedBufferedText);
 
       // Create a Blob from the audio data
       const blob = new Blob([audioData], { type: 'audio/wav' });
       const url = URL.createObjectURL(blob);
 
-      // Add the audio URL to the preloaded audio map
-      setPreloadedAudio((prevMap) => {
-        const newMap = new Map(prevMap);
-        newMap.set(currentIndex, url);
-        return newMap;
-      });
-
-      // Add the index to the queue
-      setApiQueue((prevQueue) => [...prevQueue, currentIndex]);
-      setCurrentIndex((prevIndex) => prevIndex + 1);
+      // Add the audio URL to the ordered list
+      setApiQueue((prevQueue) => [...prevQueue, url]);
 
       // Play the audio if not already playing
       if (!isProcessingQueue) {
         playNextAudio();
       }
     } catch (error) {
-      console.error('Error processing text:', text, error);
+      console.error('Error processing text:', updatedBufferedText, error);
     }
   };
 
@@ -154,10 +140,9 @@ export default function Main({ jwt }: MainProps) {
     }
 
     setIsProcessingQueue(true);
-    const nextIndex = apiQueue[0];
-    const audioUrl = preloadedAudio.get(nextIndex);
+    const audioUrl = apiQueue[0];
 
-    if (audioUrl && audioRef.current) {
+    if (audioRef.current) {
       audioRef.current.src = audioUrl;
       await audioRef.current.play().catch(err => console.error('Error playing audio:', err));
 
@@ -371,11 +356,10 @@ export default function Main({ jwt }: MainProps) {
           />
           <br/>
           <br/>
-          <button onClick={handleAudioPlay} style={{ fontSize: '1em', padding: '0.5em 1em' }} >
+          <button onClick={handleAudioPlay} style={{ marginLeft: '1em' }}>
             Convert into Real-time audio of Andrew's voice:
           </button>
-          <br/> <br/>
-          <button onClick={stopSendingData} style={{ fontSize: '1em', padding: '0.5em 1em' }} >
+          <button onClick={stopSendingData} style={{ marginLeft: '1em' }}>
             Stop Sending Data
           </button>
         </div>
