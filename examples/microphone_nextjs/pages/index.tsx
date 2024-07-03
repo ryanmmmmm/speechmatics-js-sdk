@@ -34,8 +34,6 @@ export default function Main({ jwt }: MainProps) {
   const [sessionState, setSessionState] = useState<SessionState>('configure');
   const [bearerToken, setBearerToken] = useState<string>('');
   const [bufferedText, setBufferedText] = useState<string>('');
-  const [timeoutId, setTimeoutId] = useState<NodeJS.Timeout | null>(null);
-  const [intervalId, setIntervalId] = useState<NodeJS.Timeout | null>(null);
   const [apiQueue, setApiQueue] = useState<string[]>([]);
   const [isProcessingQueue, setIsProcessingQueue] = useState<boolean>(false);
 
@@ -92,14 +90,16 @@ export default function Main({ jwt }: MainProps) {
     }
   };
 
-  const processQueue = async () => {
-    if (isProcessingQueue || apiQueue.length === 0) return;
+  const handleAddTranscript = async (res) => {
+    setTranscription((prev) => [...prev, ...res.results]);
+    setPartial('');
+    const newText = res.results.map(r => r.alternatives[0].content).join(' ');
+    const updatedBufferedText = bufferedText + ' ' + newText.trim();
+    setBufferedText(updatedBufferedText);
 
-    setIsProcessingQueue(true);
-    const text = apiQueue[0];
-
+    // Call the text-to-speech API immediately
     try {
-      console.log('Making API call with text:', text);
+      console.log('Making API call with text:', updatedBufferedText);
       const response = await fetch('http://localhost/v1/texttospeeches/generateAndrew', {
         method: 'POST',
         headers: {
@@ -107,7 +107,7 @@ export default function Main({ jwt }: MainProps) {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${bearerToken}`,
         },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text: updatedBufferedText.trim() }),
       });
 
       if (!response.ok) {
@@ -115,67 +115,44 @@ export default function Main({ jwt }: MainProps) {
       }
 
       const audioData = await response.arrayBuffer();
-      console.log('Received audio data for text:', text);
+      console.log('Received audio data for text:', updatedBufferedText);
 
       // Create a Blob from the audio data
       const blob = new Blob([audioData], { type: 'audio/wav' });
       const url = URL.createObjectURL(blob);
 
-      // Set the Blob URL as the source for the audio element and play
-      if (audioRef.current) {
-        audioRef.current.src = url;
-        await audioRef.current.play().catch(err => console.error('Error playing audio:', err));
+      // Add the audio URL to the ordered list
+      setApiQueue((prevQueue) => [...prevQueue, url]);
 
-        // Wait for the audio to finish playing before processing the next item
-        audioRef.current.onended = () => {
-          setProcessedText(text); // Update the processed text state
-          setApiQueue((prevQueue) => prevQueue.slice(1)); // Remove the processed item from the queue
-          setIsProcessingQueue(false);
-        };
+      // Play the audio if not already playing
+      if (!isProcessingQueue) {
+        playNextAudio();
       }
     } catch (error) {
-      console.error('Error processing text:', text, error);
+      console.error('Error processing text:', updatedBufferedText, error);
+    }
+  };
+
+  const playNextAudio = async () => {
+    if (apiQueue.length === 0) {
       setIsProcessingQueue(false);
-    }
-  };
-
-  useEffect(() => {
-    if (!isProcessingQueue && apiQueue.length > 0) {
-      processQueue();
-    }
-  }, [apiQueue, isProcessingQueue]);
-
-  const flushBufferedText = () => {
-    if (bufferedText.trim()) {
-      setApiQueue((prevQueue) => [...prevQueue, bufferedText.trim()]);
-      setBufferedText(''); // Clear the buffer after sending
-    }
-  };
-
-  const handleAddTranscript = (res) => {
-    setTranscription((prev) => [...prev, ...res.results]);
-    setPartial('');
-    const newText = res.results.map(r => r.alternatives[0].content).join(' ');
-    const updatedBufferedText = bufferedText + ' ' + newText.trim();
-    setBufferedText(updatedBufferedText);
-
-    // Check if buffered text has 10 or more words and is not all whitespace
-    if (updatedBufferedText.split(' ').filter(word => word.trim().length > 0).length >= 20) {
-      setApiQueue((prevQueue) => [...prevQueue, updatedBufferedText.trim()]);
-      setBufferedText(''); // Clear the buffer after adding to the queue
+      return;
     }
 
-    // Clear any existing timeout
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-    }
+    setIsProcessingQueue(true);
+    const audioUrl = apiQueue[0];
 
-    // Set a new timeout to flush the buffer after 1 second of inactivity
-    const newTimeoutId = setTimeout(() => {
-      flushBufferedText();
-      setTimeoutId(null); // Reset the timeoutId after flushing
-    }, 1000);
-    setTimeoutId(newTimeoutId);
+    if (audioRef.current) {
+      audioRef.current.src = audioUrl;
+      await audioRef.current.play().catch(err => console.error('Error playing audio:', err));
+
+      // Wait for the audio to finish playing before processing the next item
+      audioRef.current.onended = () => {
+        setApiQueue((prevQueue) => prevQueue.slice(1)); // Remove the processed item from the queue
+        setIsProcessingQueue(false);
+        playNextAudio(); // Play the next audio in the queue
+      };
+    }
   };
 
   const handleAddPartialTranscript = (res) => {
@@ -212,11 +189,8 @@ export default function Main({ jwt }: MainProps) {
       rtSession.removeListener('AddPartialTranscript', handleAddPartialTranscript);
       rtSession.removeListener('AddTranslation', handleAddTranslation);
       rtSession.removeListener('AddPartialTranslation', handleAddPartialTranslation);
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
     };
-  }, [transcription, spanishTranscription, bearerToken, timeoutId]);
+  }, [transcription, spanishTranscription, bearerToken]);
 
   // start audio recording once the websocket is connected
   rtSessionRef.current.addListener('RecognitionStarted', async () => {
@@ -494,6 +468,7 @@ function TranscriptionButton({
           onClick={async () => {
             await startTranscription();
           }}
+          style={{ fontSize: '1.5em', padding: '0.5em 1em' }} 
         >
           <CircleIcon style={{ marginRight: '0.25em', marginTop: '1px' }} />
           Start Transcribing
@@ -505,6 +480,7 @@ function TranscriptionButton({
           type='button'
           className='bottom-button stop-button'
           onClick={() => stopTranscription()}
+          style={{ fontSize: '1.5em', padding: '0.5em 1em' }}
         >
           <SquareIcon style={{ marginRight: '0.25em', marginBottom: '1px' }} />
           Stop Transcribing
