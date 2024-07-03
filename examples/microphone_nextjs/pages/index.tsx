@@ -342,7 +342,7 @@ export default function Main({ jwt }: MainProps) {
       <div className="container">
         <div className="left-box">
         <div className='flex-row'>
-        <p>Record to Microphone and stream Andree's voice:</p>
+        <p>Record to Microphone and stream Andrew's voice:</p>
         {(sessionState === 'blocked' || denied) && (
           <p className='warning-text'>Microphone permission is blocked</p>
         )}
