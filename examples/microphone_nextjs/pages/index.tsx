@@ -301,9 +301,39 @@ export default function Main({ jwt }: MainProps) {
     }
   };
 
-  useEffect(() => {
-    authenticate();
-  }, []);
+  // New function to handle audio stream from the audio element
+  const startTranscriptionWithAudioElement = async () => {
+    if (audioRef.current) {
+      const audioStream = audioRef.current.captureStream();
+      setSessionState('starting');
+      try {
+        rtSessionRef.current.sendAudioStream(audioStream);
+        setTranscription([]);
+        setSpanishTranscription([]);
+      } catch (err) {
+        setSessionState('blocked');
+        return;
+      }
+      try {
+        await rtSessionRef.current.start({
+          transcription_config: { 
+            max_delay: 2, 
+            language: 'en', 
+            operating_point: "enhanced",
+            enable_partials: true,
+          },
+          translation_config: {
+            target_languages: ['es']
+          },
+          audio_format: {
+            type: 'file',
+          },
+        });
+      } catch (err) {
+        setSessionState('error');
+      }
+    }
+  };
 
   const handleAudioPlay = async () => {
     if (audioRef.current) {
@@ -311,6 +341,10 @@ export default function Main({ jwt }: MainProps) {
       await startTranscriptionWithAudioStream(audioStream);
     }
   };
+
+  useEffect(() => {
+    authenticate();
+  }, []);
 
   return (
     <div>
