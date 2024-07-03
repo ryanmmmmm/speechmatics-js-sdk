@@ -230,10 +230,14 @@ export default function Main({ jwt }: MainProps) {
   });
 
   // Call the start method on click to start the websocket
-  const startTranscription = async () => {
+  const startTranscription = async (audioStream?: MediaStream) => {
     setSessionState('starting');
     try {
-      await audioRecorder.startRecording(audioDeviceIdComputed);
+      if (audioStream) {
+        await startTranscriptionWithAudioStream(audioStream);
+      } else {
+        await audioRecorder.startRecording(audioDeviceIdComputed);
+      }
       setTranscription([]);
       setSpanishTranscription([]);
     } catch (err) {
@@ -266,9 +270,47 @@ export default function Main({ jwt }: MainProps) {
     await rtSessionRef.current.stop();
   };
 
+  const startTranscriptionWithAudioStream = async (audioStream: MediaStream) => {
+    setSessionState('starting');
+    try {
+      // Directly use the audio stream without starting the microphone recorder
+      rtSessionRef.current.sendAudioStream(audioStream);
+      setTranscription([]);
+      setSpanishTranscription([]);
+    } catch (err) {
+      setSessionState('blocked');
+      return;
+    }
+    try {
+      await rtSessionRef.current.start({
+        transcription_config: { 
+          max_delay: 2, 
+          language: 'en', 
+          operating_point: "enhanced",
+          enable_partials: true,
+        },
+        translation_config: {
+          target_languages: ['es']
+        },
+        audio_format: {
+          type: 'file',
+        },
+      });
+    } catch (err) {
+      setSessionState('error');
+    }
+  };
+
   useEffect(() => {
     authenticate();
   }, []);
+
+  const handleAudioPlay = async () => {
+    if (audioRef.current) {
+      const audioStream = audioRef.current.captureStream();
+      await startTranscriptionWithAudioStream(audioStream);
+    }
+  };
 
   return (
     <div>
@@ -296,11 +338,21 @@ export default function Main({ jwt }: MainProps) {
           }
         }}
       />
-      <TranscriptionButton
-        sessionState={sessionState}
-        stopTranscription={stopTranscription}
-        startTranscription={startTranscription}
-      />
+      <div style={{ display: 'flex', alignItems: 'center' }}>
+        <TranscriptionButton
+          sessionState={sessionState}
+          stopTranscription={stopTranscription}
+          startTranscription={startTranscription}
+        />
+        <audio
+          controls
+          style={{ marginLeft: '1em' }}
+          src="/0b074c26-5262-4fa8-8728-0cb8e2e35712.m4a"
+          type="audio/m4a"
+          ref={audioRef}
+          onPlay={handleAudioPlay}
+        />
+      </div>
       {sessionState === 'error' && (
         <p className='warning-text'>Session encountered an error</p>
       )}
@@ -331,7 +383,6 @@ export default function Main({ jwt }: MainProps) {
           <em>{spanishPartial}</em>
         </p>
       </div>
-      <audio ref={audioRef} />
     </div>
   );
 }
@@ -366,24 +417,17 @@ function TranscriptionButton({
       {['configure', 'stopped', 'starting', 'error', 'blocked'].includes(
         sessionState,
       ) && (
-        <div style={{ display: 'flex', alignItems: 'center' }}>
-          <button
-            type='button'
-            className='bottom-button start-button'
-            disabled={sessionState === 'starting'}
-            onClick={async () => {
-              startTranscription();
-            }}
-          >
-            <CircleIcon style={{ marginRight: '0.25em', marginTop: '1px' }} />
-            Start Transcribing
-          </button>
-          <audio controls style={{ marginLeft: '1em' }}
-           src="/0b074c26-5262-4fa8-8728-0cb8e2e35712.m4a" type="audio/m4a">
-           
-        
-          </audio>
-        </div>
+        <button
+          type='button'
+          className='bottom-button start-button'
+          disabled={sessionState === 'starting'}
+          onClick={async () => {
+            await startTranscription();
+          }}
+        >
+          <CircleIcon style={{ marginRight: '0.25em', marginTop: '1px' }} />
+          Start Transcribing
+        </button>
       )}
 
       {sessionState === 'running' && (
