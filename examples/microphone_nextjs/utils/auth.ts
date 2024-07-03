@@ -3,7 +3,7 @@ export function getJwt() {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer 3Lq5QLMqQelNfQyGAqpJKsUPuDn5TLi3`,
+      Authorization: `Bearer h2qId2K4PIp4yYQDqmfm2mbSpW56twge`,
     },
     body: JSON.stringify({ ttl: 3600 }),
   })
