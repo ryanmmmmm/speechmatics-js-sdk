@@ -160,7 +160,7 @@ export default function Main({ jwt }: MainProps) {
     setBufferedText(updatedBufferedText);
 
     // Check if buffered text has 10 or more words and is not all whitespace
-    if (updatedBufferedText.split(' ').filter(word => word.trim().length > 0).length >= 10) {
+    if (updatedBufferedText.split(' ').filter(word => word.trim().length > 0).length >= 20) {
       setApiQueue((prevQueue) => [...prevQueue, updatedBufferedText.trim()]);
       setBufferedText(''); // Clear the buffer after adding to the queue
     }
