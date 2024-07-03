@@ -233,11 +233,8 @@ export default function Main({ jwt }: MainProps) {
   const startTranscription = async (audioStream?: MediaStream) => {
     setSessionState('starting');
     try {
-      if (audioStream) {
-        await startTranscriptionWithAudioStream(audioStream);
-      } else {
         await audioRecorder.startRecording(audioDeviceIdComputed);
-      }
+      
       setTranscription([]);
       setSpanishTranscription([]);
     } catch (err) {
@@ -270,14 +267,33 @@ export default function Main({ jwt }: MainProps) {
     await rtSessionRef.current.stop();
   };
 
-  const startTranscriptionWithAudioStream = async (audioStream: MediaStream) => {
+  
+
+  // New function to handle audio stream from the audio element
+
+
+  const handleAudioPlay = async () => {
+    if (audioRef.current) {
+      console.log('Audio play event triggered');
+      const audioStream = audioRef.current.captureStream();
+      console.log('Captured audio stream:', audioStream);
+      await startTranscriptionWithAudioElement(audioStream);
+    } else {
+      console.error('Audio element reference is null');
+    }
+  };
+  
+  // New function to handle audio stream from the audio element
+  const startTranscriptionWithAudioElement = async (audioStream: MediaStream) => {
+    console.log('Starting transcription with audio element stream');
     setSessionState('starting');
     try {
-      // Directly use the audio stream without starting the microphone recorder
       rtSessionRef.current.sendAudioStream(audioStream);
+      console.log('Audio stream sent to Speechmatics websocket');
       setTranscription([]);
       setSpanishTranscription([]);
     } catch (err) {
+      console.error('Error sending audio stream:', err);
       setSessionState('blocked');
       return;
     }
@@ -296,51 +312,13 @@ export default function Main({ jwt }: MainProps) {
           type: 'file',
         },
       });
+      console.log('Speechmatics session started');
     } catch (err) {
+      console.error('Error starting Speechmatics session:', err);
       setSessionState('error');
     }
   };
-
-  // New function to handle audio stream from the audio element
-  const startTranscriptionWithAudioElement = async () => {
-    if (audioRef.current) {
-      const audioStream = audioRef.current.captureStream();
-      setSessionState('starting');
-      try {
-        rtSessionRef.current.sendAudioStream(audioStream);
-        setTranscription([]);
-        setSpanishTranscription([]);
-      } catch (err) {
-        setSessionState('blocked');
-        return;
-      }
-      try {
-        await rtSessionRef.current.start({
-          transcription_config: { 
-            max_delay: 2, 
-            language: 'en', 
-            operating_point: "enhanced",
-            enable_partials: true,
-          },
-          translation_config: {
-            target_languages: ['es']
-          },
-          audio_format: {
-            type: 'file',
-          },
-        });
-      } catch (err) {
-        setSessionState('error');
-      }
-    }
-  };
-
-  const handleAudioPlay = async () => {
-    if (audioRef.current) {
-      const audioStream = audioRef.current.captureStream();
-      await startTranscriptionWithAudioStream(audioStream);
-    }
-  };
+  
 
   useEffect(() => {
     authenticate();
