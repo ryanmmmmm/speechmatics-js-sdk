@@ -125,14 +125,18 @@ export default function Main({ jwt }: MainProps) {
       if (audioRef.current) {
         audioRef.current.src = url;
         await audioRef.current.play().catch(err => console.error('Error playing audio:', err));
+
+        // Wait for the audio to finish playing before processing the next item
+        audioRef.current.onended = () => {
+          setProcessedText(text); // Update the processed text state
+          setApiQueue((prevQueue) => prevQueue.slice(1)); // Remove the processed item from the queue
+          setIsProcessingQueue(false);
+        };
       }
     } catch (error) {
       console.error('Error processing text:', text, error);
+      setIsProcessingQueue(false);
     }
-
-    setProcessedText(text); // Update the processed text state
-    setApiQueue((prevQueue) => prevQueue.slice(1)); // Remove the processed item from the queue
-    setIsProcessingQueue(false);
   };
 
   useEffect(() => {
