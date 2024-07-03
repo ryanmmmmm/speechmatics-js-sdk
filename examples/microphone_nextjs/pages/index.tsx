@@ -141,27 +141,18 @@ export default function Main({ jwt }: MainProps) {
     }
   }, [apiQueue, isProcessingQueue]);
 
-  const flushBufferedText = () => {
-    if (bufferedText.trim()) {
-      setApiQueue((prevQueue) => [...prevQueue, bufferedText]);
-      setBufferedText(''); // Clear the buffer after sending
-    }
-  };
-
   const handleAddTranscript = (res) => {
     setTranscription((prev) => [...prev, ...res.results]);
     setPartial('');
     const newText = res.results.map(r => r.alternatives[0].content).join(' ');
-    setBufferedText(prev => prev + ' ' + newText.trim());
+    const updatedBufferedText = bufferedText + ' ' + newText.trim();
+    setBufferedText(updatedBufferedText);
 
-    // Clear any existing timeout
-    if (timeoutId) {
-      clearTimeout(timeoutId);
+    // Check if buffered text has 10 or more words
+    if (updatedBufferedText.split(' ').length >= 10) {
+      setApiQueue((prevQueue) => [...prevQueue, updatedBufferedText]);
+      setBufferedText(''); // Clear the buffer after adding to the queue
     }
-
-    // Set a new timeout to flush the buffer after 5 seconds of inactivity
-    const newTimeoutId = setTimeout(flushBufferedText, 1000);
-    setTimeoutId(newTimeoutId);
   };
 
   const handleAddPartialTranscript = (res) => {
@@ -193,16 +184,11 @@ export default function Main({ jwt }: MainProps) {
     rtSession.addListener('AddTranslation', handleAddTranslation);
     rtSession.addListener('AddPartialTranslation', handleAddPartialTranslation);
 
-    // Set up an interval to periodically flush the buffer
-    const intervalId = setInterval(flushBufferedText, 1000);
-    setIntervalId(intervalId);
-
     return () => {
       rtSession.removeListener('AddTranscript', handleAddTranscript);
       rtSession.removeListener('AddPartialTranscript', handleAddPartialTranscript);
       rtSession.removeListener('AddTranslation', handleAddTranslation);
       rtSession.removeListener('AddPartialTranslation', handleAddPartialTranslation);
-      clearInterval(intervalId);
     };
   }, [transcription, spanishTranscription, bearerToken]);
 
@@ -260,15 +246,6 @@ export default function Main({ jwt }: MainProps) {
 
   useEffect(() => {
     authenticate();
-  }, []);
-
-  // Set up interval to periodically flush the buffer
-  useEffect(() => {
-    const intervalId = setInterval(flushBufferedText, 5000);
-    setIntervalId(intervalId);
-    return () => {
-      clearInterval(intervalId);
-    };
   }, []);
 
   return (
